@@ -49,7 +49,8 @@ class NoorApp extends ConsumerWidget {
     final isRamadan = ref.watch(isRamadanModeProvider);
     final platformBrightness = MediaQuery.platformBrightnessOf(context);
 
-    final resolvedTheme = resolveTheme(themeMode, platformBrightness, isRamadan);
+    final resolvedTheme =
+        resolveTheme(themeMode, platformBrightness, isRamadan);
 
     return MaterialApp.router(
       title: 'NOOR',

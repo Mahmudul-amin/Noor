@@ -30,10 +30,10 @@ class MainShell extends ConsumerWidget {
               context.go('/quran');
               break;
             case 2:
-              context.go('/prayer');
+              context.go('/hadith');
               break;
             case 3:
-              context.go('/community');
+              context.go('/books');
               break;
             case 4:
               context.go('/profile');
@@ -97,20 +97,22 @@ class _NoorBottomNav extends StatelessWidget {
                 onTap: () => onTap(0),
               ),
               _NavItem(
-                icon: Icons.menu_book_rounded,
                 label: AppStrings.quran,
                 isSelected: currentIndex == 1,
                 onTap: () => onTap(1),
+                isImage: true,
+                assetPath: 'assets/images/Quran.png',
               ),
               _NavItem(
-                icon: Icons.access_time_rounded,
-                label: AppStrings.prayer,
+                icon: Icons.menu_book_outlined,
+                label: AppStrings.hadith,
                 isSelected: currentIndex == 2,
                 onTap: () => onTap(2),
               ),
               _NavItem(
-                icon: Icons.people_rounded,
-                label: AppStrings.community,
+                isImage: true,
+                assetPath: 'assets/images/Books_Page_Header_Logo.png',
+                label: 'Books',
                 isSelected: currentIndex == 3,
                 onTap: () => onTap(3),
               ),
@@ -129,16 +131,20 @@ class _NoorBottomNav extends StatelessWidget {
 }
 
 class _NavItem extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
+  final bool isImage;
+  final String? assetPath;
 
   const _NavItem({
-    required this.icon,
+    this.icon,
     required this.label,
     required this.isSelected,
     required this.onTap,
+    this.isImage = false,
+    this.assetPath,
   });
 
   @override
@@ -162,19 +168,27 @@ class _NavItem extends StatelessWidget {
             AnimatedScale(
               scale: isSelected ? 1.15 : 1.0,
               duration: const Duration(milliseconds: 200),
-              child: Icon(
-                icon,
-                color: isSelected ? AppColors.primary : AppColors.textLight,
-                size: 24,
-              ),
+              child: isImage
+                  ? Image.asset(
+                      assetPath!,
+                      width: 24,
+                      height: 24,
+                      color: isSelected ? null : Colors.grey,
+                      colorBlendMode: isSelected ? null : BlendMode.srcIn,
+                    )
+                  : Icon(
+                      icon,
+                      color:
+                          isSelected ? AppColors.primary : AppColors.textLight,
+                      size: 24,
+                    ),
             ),
             const SizedBox(height: 2),
             AnimatedDefaultTextStyle(
               duration: const Duration(milliseconds: 200),
               style: TextStyle(
                 fontSize: 10,
-                fontWeight:
-                    isSelected ? FontWeight.w600 : FontWeight.w400,
+                fontWeight: isSelected ? FontWeight.w600 : FontWeight.w400,
                 color: isSelected ? AppColors.primary : AppColors.textLight,
               ),
               child: Text(label),

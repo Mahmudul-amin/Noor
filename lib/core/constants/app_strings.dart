@@ -35,6 +35,7 @@ class AppStrings {
   static const String quran = 'Quran';
   static const String prayer = 'Prayer';
   static const String community = 'Community';
+  static const String hadith = 'Hadith';
   static const String profile = 'Profile';
 
   // Home

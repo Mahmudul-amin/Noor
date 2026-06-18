@@ -15,8 +15,13 @@ import '../../features/habit/presentation/screens/habit_screen.dart';
 import '../../features/ramadan/presentation/screens/ramadan_screen.dart';
 import '../../features/community/presentation/screens/community_screen.dart';
 import '../../features/profile/presentation/screens/profile_screen.dart';
+import '../../features/hadith/presentation/screens/hadith_screen.dart';
 import '../widgets/main_shell.dart';
 import '../../features/calendar/presentation/screens/calendar_screen.dart';
+import '../../features/books/presentation/screens/books_screen.dart';
+import '../../features/books/presentation/screens/pdf_viewer_screen.dart';
+import '../../features/donation/presentation/screens/donation_screen.dart';
+import '../../features/dua/presentation/screens/dua_collection_screen.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
@@ -73,10 +78,41 @@ final routerProvider = Provider<GoRouter>((ref) {
             builder: (context, state) => const CommunityScreen(),
           ),
           GoRoute(
+            path: '/hadith',
+            builder: (context, state) => const HadithScreen(),
+          ),
+          GoRoute(
             path: '/profile',
             builder: (context, state) => const ProfileScreen(),
           ),
+          GoRoute(
+            path: '/books',
+            builder: (context, state) => const BooksScreen(),
+          ),
+          GoRoute(
+            path: '/ramadan',
+            builder: (context, state) => const RamadanScreen(),
+          ),
+          GoRoute(
+            path: '/donate',
+            builder: (context, state) => const DonationScreen(),
+          ),
+          GoRoute(
+            path: '/duas',
+            builder: (context, state) => const DuaCollectionScreen(),
+          ),
         ],
+      ),
+      GoRoute(
+        path: '/pdf',
+        builder: (context, state) {
+          final extra = state.extra as Map<String, dynamic>? ?? {};
+          return PdfViewerScreen(
+            title: extra['title'] ?? 'Document',
+            pdfUrl: extra['url'] ?? '',
+            coverImage: extra['image'],
+          );
+        },
       ),
       GoRoute(
         path: '/qibla',
@@ -93,10 +129,6 @@ final routerProvider = Provider<GoRouter>((ref) {
       GoRoute(
         path: '/habits',
         builder: (context, state) => const HabitScreen(),
-      ),
-      GoRoute(
-        path: '/ramadan',
-        builder: (context, state) => const RamadanScreen(),
       ),
       GoRoute(
         path: '/calendar',
