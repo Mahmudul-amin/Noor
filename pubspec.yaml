@@ -49,6 +49,7 @@ dependencies:
   audioplayers: ^6.6.0
   syncfusion_flutter_pdfviewer: ^33.2.6
   path_provider: ^2.1.5
+  scrollable_positioned_list: ^0.3.8
 
 dev_dependencies:
   flutter_test:

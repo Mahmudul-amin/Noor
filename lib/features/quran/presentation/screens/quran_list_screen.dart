@@ -3,25 +3,32 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../data/quran_data.dart';
 import '../widgets/surah_list_item.dart';
+import '../widgets/juz_list_item.dart';
 import '../widgets/continue_reading_card.dart';
 import '../widgets/tab_switcher.dart';
 import '../widgets/quran_header.dart';
 import '../../../../core/constants/app_colors.dart';
-import '../providers/quran_audio_provider.dart';
 import '../providers/last_read_provider.dart';
 import '../widgets/audio_player_widget.dart';
 import '../providers/bookmarks_provider.dart';
 
 class QuranListScreen extends ConsumerStatefulWidget {
-  const QuranListScreen({super.key});
+  final int initialTabIndex;
+  const QuranListScreen({super.key, this.initialTabIndex = 0});
 
   @override
   ConsumerState<QuranListScreen> createState() => _QuranListScreenState();
 }
 
 class _QuranListScreenState extends ConsumerState<QuranListScreen> {
-  int _activeTabIndex = 0;
+  late int _activeTabIndex;
   final List<String> _tabs = ['All Surahs', 'Juz', 'Bookmarks'];
+
+  @override
+  void initState() {
+    super.initState();
+    _activeTabIndex = widget.initialTabIndex;
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -83,12 +90,22 @@ class _QuranListScreenState extends ConsumerState<QuranListScreen> {
                         onTap: () => context.push('/quran/${s['number']}?name=${s['name']}'),
                       )),
                     ] else if (_activeTabIndex == 1) ...[
-                      const Center(
-                        child: Padding(
-                          padding: EdgeInsets.only(top: 100),
-                          child: Text('Juz feature coming soon!', style: TextStyle(color: Colors.grey)),
+                      // Juz List
+                      const Text(
+                        'Juz List',
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF111827),
                         ),
                       ),
+                      const SizedBox(height: 12),
+                      ...QuranData.juzList.map((j) => JuzListItem(
+                        number: j['number'],
+                        name: j['name'],
+                        arabicName: j['arabic'],
+                        onTap: () => context.push('/quran/juz/${j['number']}?name=${j['name']}'),
+                      )),
                     ] else if (_activeTabIndex == 2) ...[
                       // Bookmarks List
                       if (ref.watch(bookmarksProvider).isEmpty)

@@ -17,7 +17,6 @@ class _TasbihScreenState extends State<TasbihScreen>
     with TickerProviderStateMixin {
   static const _deepEmerald = Color(0xFF022C22);
   static const _softGold = Color(0xFFE8C76A);
-  static const _textWhite = Color(0xFFF7F7F7);
 
   late final AnimationController _tapController;
   late final AnimationController _floatController;

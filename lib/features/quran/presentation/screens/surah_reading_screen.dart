@@ -1,35 +1,45 @@
+import 'dart:math' as math;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:dio/dio.dart';
+import 'package:scrollable_positioned_list/scrollable_positioned_list.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../providers/quran_audio_provider.dart';
 import '../providers/last_read_provider.dart';
 import '../providers/bookmarks_provider.dart';
+import '../providers/reciter_provider.dart';
+import '../../data/quran_data.dart';
 
 // Ayah model
 class Ayah {
   final int number;
+  final int surahNumber;
   final String arabic;
   final String translation;
   final String? bengali;
   final String? audioUrl;
-  Ayah({required this.number, required this.arabic, required this.translation, this.bengali, this.audioUrl});
+  Ayah({required this.number, required this.surahNumber, required this.arabic, required this.translation, this.bengali, this.audioUrl});
 }
 
 // State providers
 
+typedef QuranParams = ({int id, bool isJuz});
+
 // Quran reading provider
-final _ayahsProvider = FutureProvider.family<List<Ayah>, int>((ref, surahNumber) async {
+final _ayahsProvider = FutureProvider.family<List<Ayah>, QuranParams>((ref, params) async {
   try {
     final dio = Dio();
     const perPage = 300; // quran.com max per page
+    
+    final endpointType = params.isJuz ? 'by_juz' : 'by_chapter';
+    final reciterId = ref.watch(reciterProvider);
 
     // ── 1. Paginate all verses ────────────────────────────────
     final List<dynamic> versesData = [];
     int page = 1;
     while (true) {
       final resp = await dio.get(
-        'https://api.quran.com/api/v4/verses/by_chapter/$surahNumber',
+        'https://api.quran.com/api/v4/verses/$endpointType/${params.id}',
         queryParameters: {
           'language': 'en',
           'translations': '20,161', // 20: Sahih Int'l (EN), 161: Taisirul Quran (BN)
@@ -52,7 +62,7 @@ final _ayahsProvider = FutureProvider.family<List<Ayah>, int>((ref, surahNumber)
     page = 1;
     while (true) {
       final resp = await dio.get(
-        'https://api.quran.com/api/v4/recitations/7/by_chapter/$surahNumber',
+        'https://api.quran.com/api/v4/recitations/$reciterId/$endpointType/${params.id}',
         queryParameters: {
           'per_page': perPage,
           'page': page,
@@ -85,12 +95,16 @@ final _ayahsProvider = FutureProvider.family<List<Ayah>, int>((ref, surahNumber)
         if (t['resource_id'] == 161) bengali = t['text'] as String? ?? '';
       }
 
+      final verseKey = v['verse_key'] as String;
+      final parsedSurahNumber = int.parse(verseKey.split(':')[0]);
+
       return Ayah(
         number: v['verse_number'] as int,
+        surahNumber: parsedSurahNumber,
         arabic: v['text_uthmani'] as String,
         translation: english.replaceAll(RegExp(r'<[^>]*>'), ''),
         bengali: bengali.replaceAll(RegExp(r'<[^>]*>'), ''),
-        audioUrl: audioMap[v['verse_key'] as String],
+        audioUrl: audioMap[verseKey],
       );
     });
   } catch (e) {
@@ -106,18 +120,68 @@ final _showTranslationProvider = StateProvider<bool>((ref) => true);
 class SurahReadingScreen extends ConsumerStatefulWidget {
   final int surahNumber;
   final String surahName;
-  const SurahReadingScreen({super.key, required this.surahNumber, required this.surahName});
+  final int? initialAyahNumber;
+  final bool isJuz;
+  
+  const SurahReadingScreen({
+    super.key, 
+    required this.surahNumber, 
+    required this.surahName, 
+    this.initialAyahNumber,
+    this.isJuz = false,
+  });
 
   @override
   ConsumerState<SurahReadingScreen> createState() => _SurahReadingScreenState();
 }
 
 class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
-  final ScrollController _scrollController = ScrollController();
+  final ItemScrollController _itemScrollController = ItemScrollController();
+  final ItemPositionsListener _itemPositionsListener = ItemPositionsListener.create();
+  bool _scrolledToInitial = false;
+
+  @override
+  void initState() {
+    super.initState();
+    // Listen to position changes to accurately track last-read ayah
+    _itemPositionsListener.itemPositions.addListener(_onPositionChanged);
+  }
+
+  void _onPositionChanged() {
+    if (!mounted) return;
+    final positions = _itemPositionsListener.itemPositions.value;
+    if (positions.isEmpty) return;
+    final topIndex = positions
+        .where((p) => p.itemTrailingEdge > 0)
+        .reduce((a, b) => a.itemLeadingEdge < b.itemLeadingEdge ? a : b)
+        .index;
+    
+    final asyncAyahs = ref.read(_ayahsProvider((id: widget.surahNumber, isJuz: widget.isJuz)));
+    asyncAyahs.whenData((ayahs) {
+      if (topIndex >= 0 && topIndex < ayahs.length) {
+        final ayah = ayahs[topIndex];
+        
+        String sName = widget.surahName;
+        if (widget.isJuz) {
+          final sData = QuranData.surahs.firstWhere(
+            (s) => s['number'] == ayah.surahNumber, 
+            orElse: () => {'name': 'Unknown'}
+          );
+          sName = sData['name'] as String;
+        }
+
+        ref.read(lastReadProvider.notifier).updateLastRead(
+          surahNumber: ayah.surahNumber,
+          surahName: sName,
+          ayahNumber: ayah.number,
+        );
+      }
+    });
+  }
 
   @override
   void dispose() {
-    _scrollController.dispose();
+    _itemPositionsListener.itemPositions.removeListener(_onPositionChanged);
     super.dispose();
   }
 
@@ -126,16 +190,19 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
       surahName: surahName,
       ayahNumber: ayahNum,
       url: url,
+      isJuz: widget.isJuz,
+      readingId: widget.surahNumber,
     );
   }
 
   void _scrollToAyah(int index) {
-    if (!_scrollController.hasClients) return;
-    _scrollController.animateTo(
-      index * 150.0,
-      duration: const Duration(milliseconds: 500),
-      curve: Curves.easeInOut,
-    );
+    if (_itemScrollController.isAttached) {
+      _itemScrollController.scrollTo(
+        index: index,
+        duration: const Duration(milliseconds: 500),
+        curve: Curves.easeInOut,
+      );
+    }
   }
 
   void _showAyahDetails(Ayah ayah) {
@@ -238,9 +305,83 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
     );
   }
 
+  void _showReciterSelection(BuildContext context, bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => Consumer(
+        builder: (context, ref, child) {
+          final recitersAsync = ref.watch(recitersListProvider);
+          final selectedReciterId = ref.watch(reciterProvider);
+
+          return DraggableScrollableSheet(
+            initialChildSize: 0.6,
+            minChildSize: 0.4,
+            maxChildSize: 0.9,
+            builder: (context, scrollController) => Container(
+              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              decoration: BoxDecoration(
+                color: isDark ? AppColors.surfaceDark : Colors.white,
+                borderRadius: const BorderRadius.vertical(top: Radius.circular(32)),
+              ),
+              child: Column(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 24),
+                    decoration: BoxDecoration(
+                      color: isDark ? Colors.white24 : Colors.grey[300],
+                      borderRadius: BorderRadius.circular(2),
+                    ),
+                  ),
+                  Text(
+                    'Choose Reciter',
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.bold,
+                      color: isDark ? Colors.white : AppColors.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+                  Expanded(
+                    child: recitersAsync.when(
+                      loading: () => const Center(child: CircularProgressIndicator(color: AppColors.primary)),
+                      error: (err, stack) => Center(child: Text('Error loading reciters', style: TextStyle(color: isDark ? Colors.white70 : Colors.black87))),
+                      data: (reciters) => ListView.builder(
+                        controller: scrollController,
+                        itemCount: reciters.length,
+                        itemBuilder: (context, index) {
+                          final reciter = reciters[index];
+                          final isSelected = reciter.id == selectedReciterId;
+                          return ListTile(
+                            title: Text(reciter.name, style: TextStyle(color: isDark ? Colors.white : Colors.black87, fontWeight: isSelected ? FontWeight.bold : FontWeight.normal)),
+                            subtitle: reciter.style != null ? Text(reciter.style!, style: TextStyle(color: isDark ? Colors.white54 : Colors.black54)) : null,
+                            trailing: isSelected ? const Icon(Icons.check_circle, color: AppColors.primary) : null,
+                            onTap: () {
+                              ref.read(reciterProvider.notifier).setReciter(reciter.id);
+                              Navigator.pop(context);
+                              // Stop currently playing audio
+                              ref.read(quranAudioProvider.notifier).stop();
+                            },
+                          );
+                        },
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final ayahsAsync = ref.watch(_ayahsProvider(widget.surahNumber));
+    final ayahsAsync = ref.watch(_ayahsProvider((id: widget.surahNumber, isJuz: widget.isJuz)));
     final showTranslation = ref.watch(_showTranslationProvider);
     final audioState = ref.watch(quranAudioProvider);
 
@@ -258,23 +399,19 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
     final currentAyah = ref.watch(_currentAyahProvider);
     final isDark = Theme.of(context).brightness == Brightness.dark;
 
-    // Update last read state whenever ayah changes
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      ref.read(lastReadProvider.notifier).updateLastRead(
-        surahNumber: widget.surahNumber,
-        surahName: widget.surahName,
-        ayahNumber: currentAyah + 1,
-      );
-    });
 
     return Scaffold(
       appBar: AppBar(
         title: Column(children: [
           Text(widget.surahName, style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700)),
-          Text('Surah ${widget.surahNumber}', style: const TextStyle(fontSize: 11, color: AppColors.textLight)),
+          Text(widget.isJuz ? 'Juz ${widget.surahNumber}' : 'Surah ${widget.surahNumber}', style: const TextStyle(fontSize: 11, color: AppColors.textLight)),
         ]),
         centerTitle: true,
         actions: [
+          CurvedTextUnderIcon(
+            onTap: () => _showReciterSelection(context, isDark),
+            isDark: isDark,
+          ),
           IconButton(
             icon: Icon(showTranslation ? Icons.translate_rounded : Icons.translate_outlined, color: AppColors.primary),
             onPressed: () => ref.read(_showTranslationProvider.notifier).state = !showTranslation,
@@ -288,7 +425,25 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
           Text('Loading Surah...'),
         ])),
         error: (e, _) => Center(child: Text('Error: $e')),
-        data: (ayahs) => Column(children: [
+        data: (ayahs) {
+          // One-shot: jump to the initial ayah once after data loads & list mounts
+          if (!_scrolledToInitial) {
+            final initial = widget.initialAyahNumber;
+            if (initial != null && initial > 1) {
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                if (mounted && _itemScrollController.isAttached) {
+                  _itemScrollController.jumpTo(
+                    index: (initial - 1).clamp(0, ayahs.length - 1),
+                  );
+                  _scrolledToInitial = true;
+                }
+              });
+            } else {
+              _scrolledToInitial = true;
+            }
+          }
+
+          return Column(children: [
           // Surah Header — image background if available
           _SurahHeader(
             surahNumber: widget.surahNumber,
@@ -296,12 +451,24 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
             verseCount: ayahs.length,
             isPlaying: audioState.surahName == widget.surahName && audioState.isPlaying,
             isDark: isDark,
+            isJuz: widget.isJuz,
             onPlayTap: () {
-              final urls = ayahs.map((a) => a.audioUrl!).whereType<String>().toList();
-              ref.read(quranAudioProvider.notifier).playSurah(
-                surahName: widget.surahName,
-                ayahUrls: urls,
-              );
+              final isPlayingThis = audioState.surahName == widget.surahName && audioState.isPlaying;
+              final isPausedThis = audioState.surahName == widget.surahName && !audioState.isPlaying && audioState.progress > 0.0;
+
+              if (isPlayingThis) {
+                ref.read(quranAudioProvider.notifier).pause();
+              } else if (isPausedThis) {
+                ref.read(quranAudioProvider.notifier).togglePlay();
+              } else {
+                final urls = ayahs.map((a) => a.audioUrl!).whereType<String>().toList();
+                ref.read(quranAudioProvider.notifier).playSurah(
+                  surahName: widget.surahName,
+                  ayahUrls: urls,
+                  isJuz: widget.isJuz,
+                  readingId: widget.surahNumber,
+                );
+              }
             },
           ),
           // Progress bar
@@ -324,16 +491,34 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
           ),
           // Ayah list
           Expanded(
-            child: ListView.builder(
-              controller: _scrollController,
+            child: ScrollablePositionedList.builder(
+              itemScrollController: _itemScrollController,
+              itemPositionsListener: _itemPositionsListener,
               padding: const EdgeInsets.fromLTRB(20, 0, 20, 110),
               itemCount: ayahs.length,
+              initialScrollIndex: () {
+                final initial = widget.initialAyahNumber;
+                if (initial != null && initial > 1) {
+                  return (initial - 1).clamp(0, ayahs.length - 1);
+                }
+                return 0;
+              }(),
               itemBuilder: (ctx, i) {
                 final ayah = ayahs[i];
                 final isCurrentAyah = i == currentAyah;
                 final isPlaying = audioState.audioUrl == ayah.audioUrl && audioState.isPlaying;
 
-                return GestureDetector(
+                final actualSurahNumber = ayah.surahNumber;
+                final actualSurahData = QuranData.surahs.firstWhere(
+                  (s) => s['number'] == actualSurahNumber, 
+                  orElse: () => {'name': 'Surah $actualSurahNumber', 'arabic': ''}
+                );
+                final actualSurahName = actualSurahData['name'] as String;
+                final actualSurahArabic = actualSurahData['arabic'] as String?;
+
+                final bool showSurahDivider = widget.isJuz && (i == 0 || ayahs[i].surahNumber != ayahs[i - 1].surahNumber);
+
+                Widget ayahWidget = GestureDetector(
                   onTap: () {
                     ref.read(_currentAyahProvider.notifier).state = i;
                     _showAyahDetails(ayah);
@@ -361,7 +546,7 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
                                 borderRadius: BorderRadius.circular(20),
                               ),
                               child: Text(
-                                '${widget.surahNumber}:${ayah.number}',
+                                '$actualSurahNumber:${ayah.number}',
                                 style: TextStyle(
                                   fontSize: 12,
                                   fontWeight: FontWeight.bold,
@@ -387,11 +572,11 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
                                   padding: EdgeInsets.zero,
                                   constraints: const BoxConstraints(),
                                   onPressed: () {
-                                    final isCurrentlyBookmarked = ref.read(bookmarksProvider.notifier).isBookmarked(widget.surahNumber, ayah.number);
+                                    final isCurrentlyBookmarked = ref.read(bookmarksProvider.notifier).isBookmarked(actualSurahNumber, ayah.number);
                                     ref.read(bookmarksProvider.notifier).toggleBookmark(
                                       BookmarkModel(
-                                        surahNumber: widget.surahNumber,
-                                        surahName: widget.surahName,
+                                        surahNumber: actualSurahNumber,
+                                        surahName: actualSurahName,
                                         ayahNumber: ayah.number,
                                         arabicText: ayah.arabic,
                                         bengaliText: ayah.bengali ?? '',
@@ -412,7 +597,7 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
                                     );
                                   },
                                   icon: Icon(
-                                    ref.watch(bookmarksProvider).any((b) => b.surahNumber == widget.surahNumber && b.ayahNumber == ayah.number)
+                                    ref.watch(bookmarksProvider).any((b) => b.surahNumber == actualSurahNumber && b.ayahNumber == ayah.number)
                                         ? Icons.bookmark_rounded
                                         : Icons.bookmark_outline_rounded,
                                     color: AppColors.primary,
@@ -469,10 +654,62 @@ class _SurahReadingScreenState extends ConsumerState<SurahReadingScreen> {
                     ),
                   ),
                 );
+
+                if (showSurahDivider) {
+                  return Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (i > 0) const SizedBox(height: 24),
+                      Container(
+                        padding: const EdgeInsets.symmetric(vertical: 24),
+                        margin: const EdgeInsets.only(bottom: 16),
+                        decoration: BoxDecoration(
+                          color: isDark ? AppColors.surfaceDark : Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withValues(alpha: 0.04),
+                              blurRadius: 10,
+                              offset: const Offset(0, 4),
+                            ),
+                          ],
+                        ),
+                        child: Column(
+                          children: [
+                            Text(
+                              actualSurahName,
+                              style: TextStyle(
+                                fontSize: 18,
+                                fontWeight: FontWeight.bold,
+                                color: isDark ? Colors.white : const Color(0xFF111827),
+                              ),
+                            ),
+                            if (actualSurahArabic != null && actualSurahArabic.isNotEmpty) ...[
+                              const SizedBox(height: 8),
+                              Text(
+                                actualSurahArabic,
+                                style: const TextStyle(
+                                  fontFamily: 'Amiri',
+                                  fontSize: 26,
+                                  fontWeight: FontWeight.bold,
+                                  color: AppColors.primary,
+                                ),
+                              ),
+                            ],
+                          ]
+                        ),
+                      ),
+                      ayahWidget,
+                    ],
+                  );
+                }
+
+                return ayahWidget;
               },
             ),
           ),
-        ]),
+        ]);
+        },
       ),
     );
   }
@@ -487,6 +724,7 @@ class _SurahHeader extends StatelessWidget {
   final int verseCount;
   final bool isPlaying;
   final bool isDark;
+  final bool isJuz;
   final VoidCallback onPlayTap;
 
   const _SurahHeader({
@@ -495,18 +733,21 @@ class _SurahHeader extends StatelessWidget {
     required this.verseCount,
     required this.isPlaying,
     required this.isDark,
+    required this.isJuz,
     required this.onPlayTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    // Will load specific surah image if it exists, otherwise falls back to a clean gradient.
-    final imagePath = switch (surahNumber) {
-      2 => 'assets/images/Surah_2_header.png',
-      3 => 'assets/images/Surah_3_header.png',
-      4 => 'assets/images/Surah_4_header.png',
-      _ => 'assets/images/surah_${surahNumber}_header.png',
-    };
+    // Will load specific surah/juz image if it exists, otherwise falls back to a clean gradient.
+    final imagePath = isJuz 
+        ? 'assets/images/juz $surahNumber.png'
+        : switch (surahNumber) {
+            2 => 'assets/images/Surah_2_header.png',
+            3 => 'assets/images/Surah_3_header.png',
+            4 => 'assets/images/Surah_4_header.png',
+            _ => 'assets/images/surah_${surahNumber}_header.png',
+          };
 
     return SizedBox(
       width: double.infinity,
@@ -533,7 +774,7 @@ class _SurahHeader extends StatelessWidget {
             ),
           ),
 
-          if (surahNumber == 1)
+          if (surahNumber == 1 && !isJuz)
             Positioned(
               left: -18,
               right: 48,
@@ -552,7 +793,7 @@ class _SurahHeader extends StatelessWidget {
             Positioned(
               left: -24,
               right: 44,
-              bottom: -67,
+              bottom: (isJuz && (surahNumber == 7 || surahNumber == 8 || surahNumber == 9)) ? -74 : -69,
               height: 160,
               child: ClipRRect(
                 borderRadius: BorderRadius.circular(14),
@@ -567,7 +808,7 @@ class _SurahHeader extends StatelessWidget {
           // Play Button Overlay
           Positioned(
             right: 20,
-            bottom: surahNumber == 4 ? -10 : -6,
+            bottom: isJuz ? -11 : (surahNumber == 4 ? -10 : -6),
             child: GestureDetector(
               onTap: onPlayTap,
               child: Container(
@@ -600,4 +841,102 @@ class _SurahHeader extends StatelessWidget {
       ),
     );
   }
+}
+
+class CurvedTextUnderIcon extends StatelessWidget {
+  final VoidCallback onTap;
+  final bool isDark;
+
+  const CurvedTextUnderIcon({super.key, required this.onTap, required this.isDark});
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: onTap,
+      behavior: HitTestBehavior.opaque,
+      child: Container(
+        width: 76,
+        height: 56,
+        alignment: Alignment.center,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            Padding(
+              padding: const EdgeInsets.only(bottom: 4),
+              child: Image.asset(
+                'assets/images/Reciter options logo.png',
+                width: 40,
+                height: 40,
+              ),
+            ),
+            CustomPaint(
+              size: const Size(76, 56),
+              painter: ArcTextPainter(
+                text: "Choose Reciter",
+                textStyle: TextStyle(
+                  fontSize: 11.0,
+                  fontWeight: FontWeight.w900,
+                  color: isDark ? Colors.white : AppColors.primary,
+                ),
+                radius: 25.0,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class ArcTextPainter extends CustomPainter {
+  final String text;
+  final TextStyle textStyle;
+  final double radius;
+
+  ArcTextPainter({
+    required this.text,
+    required this.textStyle,
+    required this.radius,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    // Translate to center of widget, slightly shifted up to make room for bottom text
+    canvas.translate(size.width / 2, size.height / 2 - 4);
+    
+    double totalAngle = 0;
+    List<TextPainter> painters = [];
+    
+    // Add extra letter spacing by artificially inflating width slightly
+    const letterSpacing = 1.0; 
+
+    for (int i = 0; i < text.length; i++) {
+      final span = TextSpan(style: textStyle, text: text[i]);
+      final tp = TextPainter(text: span, textDirection: TextDirection.ltr);
+      tp.layout();
+      painters.add(tp);
+      totalAngle += ((tp.width + letterSpacing) / radius);
+    }
+
+    double currentAngle = (math.pi / 2) + (totalAngle / 2);
+
+    for (int i = 0; i < text.length; i++) {
+      final tp = painters[i];
+      final charAngle = (tp.width + letterSpacing) / radius;
+      
+      final angle = currentAngle - charAngle / 2;
+      
+      canvas.save();
+      canvas.translate(radius * math.cos(angle), radius * math.sin(angle));
+      canvas.rotate(angle - math.pi / 2);
+      
+      tp.paint(canvas, Offset(-tp.width / 2, -tp.height / 2));
+      canvas.restore();
+      
+      currentAngle -= charAngle;
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant CustomPainter oldDelegate) => false;
 }

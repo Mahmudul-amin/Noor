@@ -446,8 +446,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     shape: BoxShape.circle,
                     gradient: RadialGradient(
                         colors: [
-                        progressColor.withOpacity(0.18),
-                        progressColor.withOpacity(0.02),
+                        progressColor.withValues(alpha: 0.18),
+                        progressColor.withValues(alpha: 0.02),
                       ],
                     ),
                   ),
@@ -459,7 +459,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     value: _downloadProgress > 0 ? _downloadProgress : null,
                     strokeWidth: 8,
                     valueColor: AlwaysStoppedAnimation(progressColor),
-                    backgroundColor: progressColor.withOpacity(0.16),
+                    backgroundColor: progressColor.withValues(alpha: 0.16),
                   ),
                 ),
                 Column(
@@ -497,7 +497,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               child: LinearProgressIndicator(
                 value: _downloadProgress > 0 ? _downloadProgress : null,
                 valueColor: AlwaysStoppedAnimation(progressColor),
-                backgroundColor: progressColor.withOpacity(0.12),
+                backgroundColor: progressColor.withValues(alpha: 0.12),
                 minHeight: 6,
               ),
             ),

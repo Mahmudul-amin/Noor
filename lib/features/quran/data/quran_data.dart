@@ -116,4 +116,51 @@ class QuranData {
     {'number': 113, 'name': 'Al-Falaq', 'arabic': 'الفلق', 'verses': 5, 'type': 'Meccan', 'meaning': 'The Daybreak'},
     {'number': 114, 'name': 'An-Nas', 'arabic': 'الناس', 'verses': 6, 'type': 'Meccan', 'meaning': 'Mankind'},
   ];
+
+  static final List<Map<String, dynamic>> juzList = List.generate(30, (index) {
+    final juzNumber = index + 1;
+    final arabicNumbers = ['١', '٢', '٣', '٤', '٥', '٦', '٧', '٨', '٩', '١٠', '١١', '١٢', '١٣', '١٤', '١٥', '١٦', '١7', '١٨', '١٩', '٢٠', '٢١', '٢٢', '٢٣', '٢٤', '٢٥', '٢٦', '٢٧', '٢٨', '٢٩', '٣٠'];
+    return {
+      'number': juzNumber,
+      'name': 'Juz $juzNumber',
+      'arabic': 'الجزء ${arabicNumbers[index]}',
+    };
+  });
+
+  static int getAbsoluteAyahNumber(int surahNumber, int ayahNumber) {
+    int absolute = 0;
+    for (int i = 0; i < surahNumber - 1; i++) {
+      absolute += surahs[i]['verses'] as int;
+    }
+    return absolute + ayahNumber;
+  }
+
+  static const _juzEnds = [
+    0, // Padding for 1-based indexing
+    148, 259, 385, 516, 640, 750, 899, 1041, 1200, 1327, 
+    1478, 1648, 1802, 2029, 2214, 2483, 2673, 2875, 3214, 3385, 
+    3563, 3732, 4089, 4264, 4510, 4705, 5104, 5241, 5672, 6236
+  ];
+
+  static int getJuzForAyah(int surahNumber, int ayahNumber) {
+    int absoluteId = getAbsoluteAyahNumber(surahNumber, ayahNumber);
+    for (int i = 1; i <= 30; i++) {
+      if (absoluteId <= _juzEnds[i]) {
+        return i;
+      }
+    }
+    return 30;
+  }
+
+  static int getAyahIndexInJuz(int surahNumber, int ayahNumber) {
+    int absoluteId = getAbsoluteAyahNumber(surahNumber, ayahNumber);
+    int juz = getJuzForAyah(surahNumber, ayahNumber);
+    int firstVerseId = _juzEnds[juz - 1] + 1;
+    return absoluteId - firstVerseId + 1;
+  }
+
+  static double getOverallProgress(int surahNumber, int ayahNumber) {
+    int absolute = getAbsoluteAyahNumber(surahNumber, ayahNumber);
+    return (absolute / 6236.0).clamp(0.0, 1.0);
+  }
 }

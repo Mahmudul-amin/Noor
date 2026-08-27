@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
-import 'dart:ui';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
@@ -815,9 +814,9 @@ class _ProgressItem extends StatelessWidget {
   final double size;
 
   const _ProgressItem({
-    this.icon,
     required this.label,
     required this.progress,
+    this.icon,
     this.isImage = false,
     this.assetPath,
     this.size = 32,

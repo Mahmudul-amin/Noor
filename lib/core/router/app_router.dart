@@ -52,8 +52,30 @@ final routerProvider = Provider<GoRouter>((ref) {
           ),
           GoRoute(
             path: '/quran',
-            builder: (context, state) => const QuranListScreen(),
+            builder: (context, state) {
+              final tabStr = state.uri.queryParameters['tab'];
+              final tabIndex = tabStr != null ? int.tryParse(tabStr) ?? 0 : 0;
+              return QuranListScreen(initialTabIndex: tabIndex);
+            },
             routes: [
+              GoRoute(
+                path: 'juz/:juzNumber',
+                builder: (context, state) {
+                  final juzNumber =
+                      int.parse(state.pathParameters['juzNumber']!);
+                  final juzName =
+                      state.uri.queryParameters['name'] ?? '';
+                  final ayahStr = state.uri.queryParameters['ayah'];
+                  final initialAyah = ayahStr != null ? int.tryParse(ayahStr) : null;
+                  
+                  return SurahReadingScreen(
+                    surahNumber: juzNumber,
+                    surahName: juzName,
+                    initialAyahNumber: initialAyah,
+                    isJuz: true,
+                  );
+                },
+              ),
               GoRoute(
                 path: ':surahNumber',
                 builder: (context, state) {
@@ -61,9 +83,13 @@ final routerProvider = Provider<GoRouter>((ref) {
                       int.parse(state.pathParameters['surahNumber']!);
                   final surahName =
                       state.uri.queryParameters['name'] ?? '';
+                  final ayahStr = state.uri.queryParameters['ayah'];
+                  final initialAyah = ayahStr != null ? int.tryParse(ayahStr) : null;
+                  
                   return SurahReadingScreen(
                     surahNumber: surahNumber,
                     surahName: surahName,
+                    initialAyahNumber: initialAyah,
                   );
                 },
               ),

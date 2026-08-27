@@ -3546,7 +3546,6 @@ class _SearchIconButton extends StatelessWidget {
   final VoidCallback onTap;
 
   const _SearchIconButton({
-    super.key,
     required this.icon,
     required this.tooltip,
     required this.onTap,
@@ -4856,7 +4855,7 @@ class _MiniOrnament extends StatelessWidget {
   Widget build(BuildContext context) {
     return Transform(
       alignment: Alignment.center,
-      transform: Matrix4.identity()..scale(reverse ? -1.0 : 1.0, 1.0),
+      transform: Matrix4.diagonal3Values(reverse ? -1.0 : 1.0, 1.0, 1.0),
       child: CustomPaint(
         size: const Size(28, 8),
         painter: _MiniOrnamentPainter(),
@@ -5404,5 +5403,4 @@ class _DuaColors {
   static const Color gold = Color(0xFFD4A64F);
   static const Color ivory = Color(0xFFF5F1E8);
   static const Color secondary = Color.fromRGBO(245, 241, 232, 0.75);
-  static const Color greenGlass = Color.fromRGBO(10, 61, 46, 0.58);
 }

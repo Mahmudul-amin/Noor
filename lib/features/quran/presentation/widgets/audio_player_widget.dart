@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:go_router/go_router.dart';
 import '../../../../core/constants/app_colors.dart';
 import '../providers/quran_audio_provider.dart';
 
@@ -14,7 +15,18 @@ class AudioPlayerWidget extends ConsumerWidget {
       return const SizedBox.shrink();
     }
 
-    return Container(
+    return GestureDetector(
+      onTap: () {
+        if (audioState.readingId != null) {
+          final ayahParam = audioState.ayahNumber != null ? '&ayah=${audioState.ayahNumber}' : '';
+          if (audioState.isJuz) {
+            context.push('/quran/juz/${audioState.readingId}?name=${audioState.surahName}$ayahParam');
+          } else {
+            context.push('/quran/${audioState.readingId}?name=${audioState.surahName}$ayahParam');
+          }
+        }
+      },
+      child: Container(
       height: 84,
       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       decoration: BoxDecoration(
@@ -97,6 +109,13 @@ class AudioPlayerWidget extends ConsumerWidget {
                     onPressed: () {},
                     icon: const Icon(Icons.skip_next_rounded, color: Colors.white, size: 28),
                   ),
+                  const SizedBox(width: 4),
+                  IconButton(
+                    onPressed: () => ref.read(quranAudioProvider.notifier).stop(),
+                    icon: const Icon(Icons.close_rounded, color: Colors.white54, size: 20),
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                  ),
                 ],
               ),
             ],
@@ -114,6 +133,6 @@ class AudioPlayerWidget extends ConsumerWidget {
           ),
         ],
       ),
-    );
+    ));
   }
 }
